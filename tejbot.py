@@ -13,7 +13,7 @@ client = discord.Client(intents=intents)
 
 @client.event
 async def on_ready():
-    print(f"Logged in as {client.user}")
+    print(f"✅ Logged in as {client.user}")
 
 @client.event
 async def on_message(message):
@@ -56,12 +56,12 @@ async def on_message(message):
             if "candidates" in data:
                 reply = data["candidates"][0]["content"]["parts"][0]["text"]
             else:
-                reply = "AI not working"
+                reply = "API error 😅"
 
             await message.reply(reply)
 
         except Exception as e:
-            print(e)
-            await message.reply("Error")
+            print("ERROR:", e)
+            await message.reply("Something broke 😅")
 
 client.run(TOKEN)
