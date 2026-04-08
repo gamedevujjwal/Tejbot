@@ -30,22 +30,26 @@ async def on_message(message):
         await message.channel.typing()
 
         try:
-            url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+            url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
-            response = requests.post(
-                url,
-                json={
-                    "contents": [
-                        {
-                            "parts": [
-                                {
-                                    "text": "Your name is TEJ. Reply in English. " + user_message
-                                }
-                            ]
-                        }
-                    ]
-                }
-            )
+response = requests.post(
+    url,
+    headers={
+        "Content-Type": "application/json",
+        "x-goog-api-key": API_KEY
+    },
+    json={
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": "Your name is TEJ. Reply in English. " + user_message
+                    }
+                ]
+            }
+        ]
+    }
+)
 
             data = response.json()
 
