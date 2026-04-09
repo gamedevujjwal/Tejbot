@@ -36,8 +36,8 @@ def save_config() -> None:
     try:
         with open(CONFIG_FILE, "w") as f:
             json.dump(config, f, indent=2)
-    except OSError as e:
-        print(f"[CONFIG] Failed to save: {e}")
+    except Exception as e:
+        print(f"[CONFIG ERROR] {e}")
 
 
 config = load_config()
@@ -117,27 +117,7 @@ async def on_member_join(member: discord.Member):
     await send_log(embed)
 
 
-@bot.event
-async def on_member_remove(member: discord.Member):
-    embed = discord.Embed(
-        title="Member Left",
-        color=discord.Color.red(),
-        timestamp=discord.utils.utcnow()
-    )
-    embed.set_thumbnail(url=member.display_avatar.url)
-    embed.add_field(name="User",   value=f"{member} (`{member.id}`)", inline=False)
-    embed.add_field(
-        name="Joined",
-        value=f"<t:{int(member.joined_at.timestamp())}:R>" if member.joined_at else "Unknown",
-        inline=False
-    )
-    embed.set_footer(text="ViraBot")
-    await send_log(embed)
-
-
 # ── Audit Log — fetch based approach ──────────────────────────────────────────
-# on_audit_log_entry_create is not stable in discord.py 2.3.2
-# Using on_member_ban / on_member_unban / on_member_update instead
 
 @bot.event
 async def on_member_ban(guild: discord.Guild, user: discord.User):
@@ -214,9 +194,9 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 
 
 # ── Kick detection via audit log on member remove ──────────────────────────────
+# (single handler kept; duplicate removed)
 @bot.event
 async def on_member_remove(member: discord.Member):
-    # Log: member left
     embed_left = discord.Embed(
         title="Member Left",
         color=discord.Color.red(),
@@ -232,7 +212,6 @@ async def on_member_remove(member: discord.Member):
     embed_left.set_footer(text="ViraBot")
     await send_log(embed_left)
 
-    # Check if it was a kick
     await discord.utils.sleep_until(
         discord.utils.utcnow() + datetime.timedelta(seconds=1)
     )
@@ -255,43 +234,61 @@ async def on_member_remove(member: discord.Member):
 @app_commands.describe(channel="The welcome channel")
 @app_commands.checks.has_permissions(administrator=True)
 async def setwelcomechannel(interaction: discord.Interaction, channel: discord.TextChannel):
-    config["welcome_channel"] = channel.id
-    save_config()
-    await interaction.response.send_message(f"Welcome channel set to {channel.mention}.", ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+    try:
+        config["welcome_channel"] = channel.id
+        save_config()
+        await interaction.edit_original_response(content=f"Welcome channel set to {channel.mention}.")
+    except Exception as e:
+        await interaction.edit_original_response(content=f"Error: {e}")
 
 @setwelcomechannel.error
 async def setwelcomechannel_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("You need Administrator permission.", ephemeral=True)
+    try:
+        await interaction.response.send_message(f"Error: {error}", ephemeral=True)
+    except:
+        pass
 
 
 @tree.command(name="setlogchannel", description="Set the channel where audit logs are sent.")
 @app_commands.describe(channel="The log channel")
 @app_commands.checks.has_permissions(administrator=True)
 async def setlogchannel(interaction: discord.Interaction, channel: discord.TextChannel):
-    config["log_channel"] = channel.id
-    save_config()
-    await interaction.response.send_message(f"Log channel set to {channel.mention}.", ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+    try:
+        config["log_channel"] = channel.id
+        save_config()
+        await interaction.edit_original_response(content=f"Log channel set to {channel.mention}.")
+    except Exception as e:
+        await interaction.edit_original_response(content=f"Error: {e}")
 
 @setlogchannel.error
 async def setlogchannel_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("You need Administrator permission.", ephemeral=True)
+    try:
+        await interaction.response.send_message(f"Error: {error}", ephemeral=True)
+    except:
+        pass
 
 
 @tree.command(name="setwelcome", description="Set the welcome message. Use {mention}, {user}, {guild}.")
 @app_commands.describe(message="The welcome message template")
 @app_commands.checks.has_permissions(administrator=True)
 async def setwelcome(interaction: discord.Interaction, message: str):
-    config["welcome_message"] = message
-    save_config()
-    preview = fmt_placeholder(message, interaction.user)  # type: ignore[arg-type]
-    await interaction.response.send_message(f"Welcome message updated!\n\nPreview:\n{preview}", ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+    try:
+        config["welcome_message"] = message
+        save_config()
+        preview = fmt_placeholder(message, interaction.user)  # type: ignore[arg-type]
+        await interaction.edit_original_response(content=f"Welcome message updated!\n\nPreview:\n{preview}")
+    except Exception as e:
+        await interaction.edit_original_response(content=f"Error: {e}")
 
 @setwelcome.error
 async def setwelcome_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("You need Administrator permission.", ephemeral=True)
+    try:
+        await interaction.response.send_message(f"Error: {error}", ephemeral=True)
+    except:
+        pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -316,8 +313,10 @@ async def settings(interaction: discord.Interaction):
 
 @settings.error
 async def settings_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("You need Administrator permission.", ephemeral=True)
+    try:
+        await interaction.response.send_message(f"Error: {error}", ephemeral=True)
+    except:
+        pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -328,18 +327,21 @@ async def settings_error(interaction: discord.Interaction, error: app_commands.A
 @app_commands.describe(channel="The channel to send the message in", message="The message to send")
 @app_commands.checks.has_permissions(administrator=True)
 async def say(interaction: discord.Interaction, channel: discord.TextChannel, message: str):
+    await interaction.response.defer(ephemeral=True)
     try:
         await channel.send(message)
-        await interaction.response.send_message(f"Message sent to {channel.mention}.", ephemeral=True)
+        await interaction.edit_original_response(content=f"Message sent to {channel.mention}.")
     except discord.Forbidden:
-        await interaction.response.send_message("I don't have permission to send messages in that channel.", ephemeral=True)
+        await interaction.edit_original_response(content="I don't have permission to send messages in that channel.")
     except discord.HTTPException as e:
-        await interaction.response.send_message(f"Failed to send message: {e}", ephemeral=True)
+        await interaction.edit_original_response(content=f"Failed to send message: {e}")
 
 @say.error
 async def say_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("You need Administrator permission.", ephemeral=True)
+    try:
+        await interaction.response.send_message(f"Error: {error}", ephemeral=True)
+    except:
+        pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -350,18 +352,21 @@ async def say_error(interaction: discord.Interaction, error: app_commands.AppCom
 @app_commands.describe(channel="The channel to post rules in", message="The rules text")
 @app_commands.checks.has_permissions(administrator=True)
 async def rules(interaction: discord.Interaction, channel: discord.TextChannel, message: str):
+    await interaction.response.defer(ephemeral=True)
     try:
         await channel.send(message)
-        await interaction.response.send_message(f"Rules posted in {channel.mention}.", ephemeral=True)
+        await interaction.edit_original_response(content=f"Rules posted in {channel.mention}.")
     except discord.Forbidden:
-        await interaction.response.send_message("I don't have permission to send messages in that channel.", ephemeral=True)
+        await interaction.edit_original_response(content="I don't have permission to send messages in that channel.")
     except discord.HTTPException as e:
-        await interaction.response.send_message(f"Failed to post rules: {e}", ephemeral=True)
+        await interaction.edit_original_response(content=f"Failed to post rules: {e}")
 
 @rules.error
 async def rules_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("You need Administrator permission.", ephemeral=True)
+    try:
+        await interaction.response.send_message(f"Error: {error}", ephemeral=True)
+    except:
+        pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
