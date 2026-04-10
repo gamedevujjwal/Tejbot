@@ -687,7 +687,7 @@ async def botinfo(interaction: discord.Interaction):
         color=discord.Color.blurple(),
         timestamp=discord.utils.utcnow()
     )
-    embed.add_field(name="Developed by", value="@ujjwalborse", inline=False)
+    embed.add_field(name="Developed by", value="@ujjwalborse09", inline=False)
     embed.add_field(name="Features",     value="Welcome • Logs • Levels • Invites • Translation • YouTube Feed • Autorole", inline=False)
     embed.set_footer(text="ViraBot • Official")
     await interaction.response.send_message(embed=embed, ephemeral=True)
