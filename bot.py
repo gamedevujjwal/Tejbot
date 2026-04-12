@@ -3,15 +3,35 @@ import json
 import asyncio
 import datetime
 import xml.etree.ElementTree as ET
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import aiohttp
-import asyncpg
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 from googletrans import Translator
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  CONFIG — settings still in config.json, data in Supabase
+#  KEEP-ALIVE SERVER (for Replit + UptimeRobot)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class PingHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"ViraBot is alive!")
+    def log_message(self, format, *args):
+        pass  # suppress logs
+
+def run_server():
+    server = HTTPServer(("0.0.0.0", 8080), PingHandler)
+    server.serve_forever()
+
+threading.Thread(target=run_server, daemon=True).start()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  CONFIG
 # ══════════════════════════════════════════════════════════════════════════════
 
 CONFIG_FILE = "config.json"
@@ -26,6 +46,8 @@ DEFAULT_CONFIG: dict = {
     "autorole":         None,
     "welcome_message":  "Welcome {mention} to **{guild}**!",
     "last_yt_video":    None,
+    "xp":               {},
+    "invites":          {},
 }
 
 XP_PER_MESSAGE = 15
@@ -43,7 +65,7 @@ def load_config() -> dict:
             return data
         except (json.JSONDecodeError, OSError):
             pass
-    return {k: v for k, v in DEFAULT_CONFIG.items()}
+    return {k: (v.copy() if isinstance(v, dict) else v) for k, v in DEFAULT_CONFIG.items()}
 
 
 def save_config() -> None:
@@ -56,8 +78,6 @@ def save_config() -> None:
 
 config = load_config()
 
-db: asyncpg.Pool = None
-
 
 def xp_for_level(level: int) -> int:
     return int(XP_BASE * (XP_MULTIPLIER ** (level - 1)))
@@ -68,44 +88,6 @@ def get_level(xp: int) -> int:
     while xp >= xp_for_level(level + 1):
         level += 1
     return level
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  DATABASE HELPERS
-# ══════════════════════════════════════════════════════════════════════════════
-
-async def db_get_xp(user_id: str) -> dict:
-    row = await db.fetchrow("SELECT xp, level FROM xp WHERE user_id = $1", user_id)
-    if row:
-        return {"xp": row["xp"], "level": row["level"]}
-    return {"xp": 0, "level": 1}
-
-
-async def db_set_xp(user_id: str, xp: int, level: int):
-    await db.execute("""
-        INSERT INTO xp (user_id, xp, level)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (user_id) DO UPDATE SET xp = $2, level = $3
-    """, user_id, xp, level)
-
-
-async def db_get_invites(user_id: str) -> dict:
-    row = await db.fetchrow("SELECT total, left_count, members FROM invites WHERE user_id = $1", user_id)
-    if row:
-        return {
-            "total": row["total"],
-            "left":  row["left_count"],
-            "members": json.loads(row["members"])
-        }
-    return {"total": 0, "left": 0, "members": []}
-
-
-async def db_set_invites(user_id: str, total: int, left: int, members: list):
-    await db.execute("""
-        INSERT INTO invites (user_id, total, left_count, members)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (user_id) DO UPDATE SET total = $2, left_count = $3, members = $4
-    """, user_id, total, left, json.dumps(members))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -234,10 +216,6 @@ async def check_youtube():
 
 @bot.event
 async def on_ready():
-    global db
-    db = await asyncpg.create_pool(os.getenv("DATABASE_URL"))
-    print("[ViraBot] Database connected.")
-
     await tree.sync()
     for guild in bot.guilds:
         try:
@@ -253,7 +231,6 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member: discord.Member):
-    # Autorole
     autorole_id = config.get("autorole")
     if autorole_id:
         role = member.guild.get_role(int(autorole_id))
@@ -263,7 +240,6 @@ async def on_member_join(member: discord.Member):
             except discord.HTTPException as e:
                 print(f"[Autorole] Failed: {e}")
 
-    # Welcome message
     wc_id = config.get("welcome_channel")
     if wc_id:
         wc = member.guild.get_channel(int(wc_id))
@@ -273,7 +249,6 @@ async def on_member_join(member: discord.Member):
             except discord.HTTPException:
                 pass
 
-    # Log
     embed = discord.Embed(title="Member Joined", color=discord.Color.green(), timestamp=discord.utils.utcnow())
     embed.set_thumbnail(url=member.display_avatar.url)
     embed.add_field(name="User",        value=f"{member} (`{member.id}`)", inline=False)
@@ -281,7 +256,6 @@ async def on_member_join(member: discord.Member):
     embed.set_footer(text=f"Member #{member.guild.member_count} • ViraBot")
     await send_log(embed)
 
-    # Invite tracking in background
     bot.loop.create_task(handle_invite(member))
 
 
@@ -289,11 +263,12 @@ async def handle_invite(member: discord.Member):
     inviter = await find_inviter(member.guild)
 
     if inviter:
-        uid  = str(inviter.id)
-        data = await db_get_invites(uid)
-        data["total"] += 1
-        data["members"].append(member.id)
-        await db_set_invites(uid, data["total"], data["left"], data["members"])
+        uid = str(inviter.id)
+        if uid not in config["invites"]:
+            config["invites"][uid] = {"total": 0, "left": 0, "members": []}
+        config["invites"][uid]["total"] += 1
+        config["invites"][uid]["members"].append(member.id)
+        save_config()
 
     inv_ch_id = config.get("invite_channel")
     if not inv_ch_id:
@@ -304,7 +279,7 @@ async def handle_invite(member: discord.Member):
 
     if inviter:
         uid  = str(inviter.id)
-        data = await db_get_invites(uid)
+        data = config["invites"].get(uid, {"total": 0, "left": 0})
         real = data["total"] - data["left"]
         text = f"{member.mention} joined using {inviter.mention}'s invite. They now have **{real}** invite(s)."
     else:
@@ -318,14 +293,10 @@ async def handle_invite(member: discord.Member):
 
 @bot.event
 async def on_member_remove(member: discord.Member):
-    # Fake invite protection
-    rows = await db.fetch("SELECT user_id, members FROM invites")
-    for row in rows:
-        members = json.loads(row["members"])
-        if member.id in members:
-            data = await db_get_invites(row["user_id"])
-            data["left"] += 1
-            await db_set_invites(row["user_id"], data["total"], data["left"], data["members"])
+    for uid, data in config["invites"].items():
+        if member.id in data.get("members", []):
+            data["left"] = data.get("left", 0) + 1
+            save_config()
             break
 
     try:
@@ -440,13 +411,15 @@ async def on_message(message: discord.Message):
         return
 
     uid       = str(message.author.id)
-    user_xp   = await db_get_xp(uid)
+    xp_store  = config["xp"]
+    user_xp   = xp_store.get(uid, {"xp": 0, "level": 1})
     old_level = user_xp["level"]
 
     user_xp["xp"] += XP_PER_MESSAGE
-    new_level = get_level(user_xp["xp"])
+    new_level        = get_level(user_xp["xp"])
     user_xp["level"] = new_level
-    await db_set_xp(uid, user_xp["xp"], new_level)
+    xp_store[uid]    = user_xp
+    save_config()
 
     if new_level > old_level:
         lv_ch_id = config.get("level_channel")
@@ -472,7 +445,7 @@ async def on_message(message: discord.Message):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  SLASH COMMANDS — ADMIN SETUP
+#  SLASH COMMANDS
 # ══════════════════════════════════════════════════════════════════════════════
 
 def admin_error(msg="You need Administrator permission."):
@@ -574,13 +547,11 @@ async def settings(interaction: discord.Interaction):
             return "Not set"
         ch = interaction.guild.get_channel(int(ch_id))
         return ch.mention if ch else f"<#{ch_id}> (deleted?)"
-
     def fr(r_id) -> str:
         if not r_id:
             return "Not set"
         r = interaction.guild.get_role(int(r_id))
         return r.mention if r else f"<@&{r_id}> (deleted?)"
-
     e = discord.Embed(title="ViraBot Settings", color=discord.Color.blurple())
     e.add_field(name="Welcome Channel", value=fc(config["welcome_channel"]), inline=True)
     e.add_field(name="Log Channel",     value=fc(config["log_channel"]),     inline=True)
@@ -650,14 +621,12 @@ async def level(interaction: discord.Interaction, user: discord.Member = None):
         mention = ch.mention if ch else "the level channel"
         await interaction.response.send_message(f"Use this command in {mention}.", ephemeral=True)
         return
-
     target  = user or interaction.user
     uid     = str(target.id)
-    user_xp = await db_get_xp(uid)
+    user_xp = config["xp"].get(uid, {"xp": 0, "level": 1})
     xp      = user_xp["xp"]
     lv      = get_level(xp)
     next_xp = xp_for_level(lv + 1)
-
     e = discord.Embed(title=f"{target.display_name}'s Level", color=discord.Color.gold())
     e.set_thumbnail(url=target.display_avatar.url)
     e.add_field(name="Level",         value=str(lv),         inline=True)
@@ -676,14 +645,12 @@ async def invites(interaction: discord.Interaction, user: discord.Member = None)
         mention = ch.mention if ch else "the invite channel"
         await interaction.response.send_message(f"Use this command in {mention}.", ephemeral=True)
         return
-
     target = user or interaction.user
     uid    = str(target.id)
-    data   = await db_get_invites(uid)
-    total  = data["total"]
-    left   = data["left"]
+    data   = config["invites"].get(uid, {"total": 0, "left": 0})
+    total  = data.get("total", 0)
+    left   = data.get("left", 0)
     real   = total - left
-
     e = discord.Embed(title=f"{target.display_name}'s Invites", color=discord.Color.blurple())
     e.set_thumbnail(url=target.display_avatar.url)
     e.add_field(name="Total Invites", value=str(total), inline=True)
@@ -702,25 +669,16 @@ async def translate(interaction: discord.Interaction, text: str):
         translated = result.text
         src_lang   = result.src
         if src_lang == "en":
-            await interaction.followup.send(
-                f"{interaction.user.display_name} said (already in English):\n{translated}"
-            )
+            await interaction.followup.send(f"{interaction.user.display_name} said (already in English):\n{translated}")
         else:
-            await interaction.followup.send(
-                f"{interaction.user.display_name} said ({src_lang.upper()} to EN):\n{translated}"
-            )
+            await interaction.followup.send(f"{interaction.user.display_name} said ({src_lang.upper()} to EN):\n{translated}")
     except Exception as ex:
         await interaction.followup.send(f"Translation failed: {ex}")
 
 
 @tree.command(name="botinfo", description="About ViraBot.")
 async def botinfo(interaction: discord.Interaction):
-    e = discord.Embed(
-        title="ViraBot",
-        description="The official bot of Vira Arena.",
-        color=discord.Color.blurple(),
-        timestamp=discord.utils.utcnow()
-    )
+    e = discord.Embed(title="ViraBot", description="The official bot of Vira Arena.", color=discord.Color.blurple(), timestamp=discord.utils.utcnow())
     e.add_field(name="Developed by", value="@ujjwalborse09", inline=False)
     e.add_field(name="Features", value="Welcome • Logs • Levels • Invites • Translation • YouTube Feed • Autorole", inline=False)
     e.set_footer(text="ViraBot • Official")
