@@ -699,4 +699,12 @@ async def botinfo(interaction: discord.Interaction):
 #  RUN
 # ══════════════════════════════════════════════════════════════════════════════
 
-bot.run(os.getenv("TOKEN"))
+token = os.getenv("TOKEN")
+if not token:
+    try:
+        with open("token.txt", "r") as f:
+            token = f.read().strip()
+    except FileNotFoundError:
+        print("[ERROR] TOKEN not found! Set TOKEN env variable or create token.txt file.")
+        exit(1)
+bot.run(token)
