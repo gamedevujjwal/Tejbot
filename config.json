@@ -1,46 +1,42 @@
 {
-  "welcome_channel": 1491788331292561540,
-  "log_channel": 1491794200952311871,
-  "level_channel": 1491800793978900570,
-  "invite_channel": 1491800870931796129,
-  "youtube_channel": 1491790435142729839,
-  "youtube_id": "UCa0VxX_4H6sVZr9lZl9Qp8Q",
-  "autorole": 1491797724117598360,
-  "welcome_message": "Welcome {mention} to **{guild}**!",
-  "last_yt_video": null,
-  "xp": {
-    "1153843099345358899": {
-      "xp": 810,
-      "level": 6
+  "1441672296870707337": {
+    "welcome_channel": 1491788331292561540,
+    "log_channel": 1491794200952311871,
+    "level_channel": 1491800793978900570,
+    "invite_channel": 1491800870931796129,
+    "youtube_channel": 1491790435142729839,
+    "youtube_id": "UCa0VxX_4H6sVZr9lZl9Qp8Q",
+    "autorole": 1491797724117598360,
+    "welcome_message": "Welcome {mention} to **{guild}**!",
+    "last_yt_video": null,
+    "xp": {
+      "1153843099345358899": {"xp": 810, "level": 6},
+      "1491318129501016164": {"xp": 1875, "level": 8},
+      "1401106454982950952": {"xp": 75, "level": 1},
+      "1334853145838358640": {"xp": 1260, "level": 7},
+      "1289072478861262860": {"xp": 45, "level": 1},
+      "1492869224773980180": {"xp": 405, "level": 4},
+      "645554172908929025": {"xp": 45, "level": 1},
+      "1015622605019025448": {"xp": 165, "level": 2},
+      "1104081410815426682": {"xp": 15, "level": 1}
     },
-    "1491318129501016164": {
-      "xp": 1485,
-      "level": 7
-    },
-    "1401106454982950952": {
-      "xp": 75,
-      "level": 1
-    },
-    "1334853145838358640": {
-      "xp": 1050,
-      "level": 6
-    },
-    "1289072478861262860": {
-      "xp": 45,
-      "level": 1
-    },
-    "1492869224773980180": {
-      "xp": 165,
-      "level": 2
+    "invites": {
+      "1491318129501016164": {"total": 1, "left": 1, "members": [1153843099345358899]},
+      "1334853145838358640": {"total": 2, "left": 0, "members": [645554172908929025, 510772602684440649]},
+      "1321086404851404833": {"total": 2, "left": 1, "members": [1321086404851404833, 1286628103409635359]}
     }
   },
-  "invites": {
-    "1491318129501016164": {
-      "total": 1,
-      "left": 1,
-      "members": [
-        1153843099345358899
-      ]
-    }
+  "1493934306643677244": {
+    "welcome_channel": null,
+    "log_channel": null,
+    "level_channel": null,
+    "invite_channel": null,
+    "youtube_channel": null,
+    "youtube_id": null,
+    "autorole": null,
+    "welcome_message": "Welcome {mention} to **{guild}**!",
+    "last_yt_video": null,
+    "xp": {},
+    "invites": {}
   }
 }
